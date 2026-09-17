@@ -205,10 +205,11 @@ const TOWNS = [
 
 // ---------- Map ----------
 const map = L.map('map',{zoomControl:true});
-L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',{
-  maxZoom:20,
-  subdomains:'abcd',
-  attribution:'&copy; OpenStreetMap contributors &copy; CARTO'
+// Standard OSM tiles. These 403'd when the file was opened locally (file:// sends no
+// Referer, which OSM blocks); served from GitHub Pages the Referer is valid.
+L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{
+  maxZoom:19,
+  attribution:'&copy; OpenStreetMap contributors'
 }).addTo(map);
 
 const COLORS = {gb:getCSS('--gb'), bl:getCSS('--bl')};
