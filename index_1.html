@@ -1,0 +1,443 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Towns Within 2 Hours — Greybull, WY &amp; Billings, MT</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+  integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+<style>
+  :root{
+    --gb:#c0392b;      /* Greybull / Wyoming accent */
+    --bl:#2471a3;      /* Billings / Montana accent */
+    --ink:#1c2833;
+    --line:#d5dbdb;
+    --bg:#f4f6f7;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;height:100%;font-family:Arial,Helvetica,sans-serif;color:var(--ink);background:var(--bg);}
+  #app{display:flex;flex-direction:column;height:100vh;}
+  header{padding:10px 16px;background:#fff;border-bottom:1px solid var(--line);}
+  header h1{margin:0;font-size:18px;}
+  header p{margin:3px 0 0;font-size:12px;color:#5d6d7e;}
+  #map{flex:1 1 50%;min-height:0;}
+  #legend{display:flex;gap:18px;flex-wrap:wrap;font-size:12px;margin-top:6px;}
+  #legend span{display:inline-flex;align-items:center;gap:5px;}
+  #legend #regionSel{font-size:12px;padding:2px 4px;border:1px solid var(--line);border-radius:4px;background:#fff;}
+  .dot{width:12px;height:12px;border-radius:50%;display:inline-block;border:2px solid #fff;box-shadow:0 0 0 1px #888;}
+  .dot.gb{background:var(--gb);} .dot.bl{background:var(--bl);}
+  .dot.office{width:14px;height:14px;border-radius:2px;}
+  #tables{flex:1 1 50%;overflow:auto;padding:12px 16px;display:flex;gap:16px;flex-wrap:wrap;}
+  .panel{flex:1 1 320px;min-width:280px;}
+  .panel h2{font-size:15px;margin:0 0 8px;padding-bottom:6px;border-bottom:2px solid;}
+  .panel.gb h2{border-color:var(--gb);color:var(--gb);}
+  .panel.bl h2{border-color:var(--bl);color:var(--bl);}
+  table{width:100%;border-collapse:collapse;font-size:13px;background:#fff;}
+  th,td{text-align:left;padding:6px 8px;border-bottom:1px solid var(--line);}
+  th{background:#eaeded;cursor:pointer;user-select:none;white-space:nowrap;}
+  th .arr{font-size:10px;color:#888;}
+  tr:hover td{background:#fbfcfc;}
+  td.time{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap;}
+  .count{font-weight:normal;font-size:12px;color:#5d6d7e;}
+  td.townlink{color:#1a5276;cursor:pointer;text-decoration:underline dotted;}
+  td.townlink:hover{color:#0b3d5c;text-decoration:underline;}
+  /* Calculator bar */
+  #calc{background:#fff;border-bottom:1px solid var(--line);padding:10px 16px;display:flex;flex-wrap:wrap;align-items:center;gap:10px 14px;font-size:13px;}
+  #calc .grp{display:flex;align-items:center;gap:6px;}
+  #calc label{font-weight:bold;color:#34495e;}
+  #calc select{font-size:13px;padding:4px 6px;border:1px solid var(--line);border-radius:4px;background:#fff;}
+  #calc .swap{cursor:pointer;border:1px solid var(--line);background:#f8f9f9;border-radius:4px;padding:4px 8px;}
+  #calc .swap:hover{background:#eaeded;}
+  #winterWrap{display:inline-flex;align-items:center;gap:6px;}
+  #result{margin-left:auto;display:flex;align-items:baseline;gap:10px;}
+  #result .range{font-size:20px;font-weight:bold;color:var(--ink);}
+  #result .miles{font-size:12px;color:#5d6d7e;}
+  #result.winter .range{color:#1f6391;}
+  #calcNote{flex-basis:100%;font-size:11px;color:#85929e;margin:0;}
+
+  /* ---------- Tablet / phone: portrait-first ---------- */
+  @media (max-width: 900px){
+    /* Let the page scroll instead of cramming everything into one viewport */
+    html,body{height:auto;}
+    #app{height:auto;min-height:100vh;}
+
+    header{padding:10px 14px;}
+    header h1{font-size:16px;line-height:1.3;}
+    header p{font-size:12px;}
+    #legend{gap:10px 14px;font-size:12px;margin-top:8px;}
+    #legend .grp{flex-basis:100%;}
+    #legend #regionSel{font-size:16px;padding:6px 8px;flex:1;}
+
+    /* Map keeps a real height instead of fighting the tables for space */
+    #map{flex:none;height:52vh;min-height:300px;}
+
+    /* Calculator: full-width controls, result on its own line */
+    #calc{gap:10px 12px;padding:12px 14px;}
+    #calc .grp{flex:1 1 100%;}
+    #calc select{flex:1;font-size:16px;padding:8px;}   /* 16px stops iOS zoom-on-focus */
+    #calc .swap{align-self:center;padding:8px 16px;font-size:16px;}
+    #winterWrap{flex-basis:100%;padding:2px 0;}
+    #winterChk{width:20px;height:20px;}
+    #result{margin-left:0;flex-basis:100%;justify-content:space-between;
+            border-top:1px solid var(--line);padding-top:10px;}
+    #result .range{font-size:22px;}
+
+    /* Tables stack instead of squeezing side by side */
+    #tables{flex-direction:column;gap:20px;padding:14px;overflow:visible;}
+    .panel{flex:none;width:100%;min-width:0;}
+    table{font-size:15px;}
+    th,td{padding:12px 10px;}      /* bigger tap targets */
+    th{font-size:13px;}
+  }
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <h1>Towns Within 2 Hours of Greybull, WY <span style="color:#888">or</span> Billings, MT</h1>
+    <p>Drive times are from each town to its nearest office. Click a map pin for details.</p>
+    <div id="legend">
+      <span><i class="dot office gb"></i> Greybull office</span>
+      <span><i class="dot office bl"></i> Billings office</span>
+      <span><i class="dot gb"></i> Town near Greybull</span>
+      <span><i class="dot bl"></i> Town near Billings</span>
+      <span class="grp" style="gap:6px;">
+        <label for="regionSel" style="font-weight:bold;">WY area</label>
+        <select id="regionSel">
+          <option value="all">All Wyoming towns</option>
+          <option value="cpl">Cody / Powell / Lovell area</option>
+          <option value="tw">Thermopolis / Worland area</option>
+        </select>
+      </span>
+    </div>
+  </header>
+  <div id="calc">
+    <div class="grp">
+      <label for="fromSel">From</label>
+      <select id="fromSel"></select>
+    </div>
+    <button class="swap" id="swapBtn" title="Swap from/to">&#8646;</button>
+    <div class="grp">
+      <label for="toSel">To</label>
+      <select id="toSel"></select>
+    </div>
+    <span id="winterWrap">
+      <input type="checkbox" id="winterChk">
+      <label for="winterChk" style="font-weight:normal;">Winter conditions</label>
+    </span>
+    <div id="result">
+      <span class="range" id="rangeOut">—</span>
+      <span class="miles" id="milesOut"></span>
+    </div>
+    <p id="calcNote">Rough estimate from straight-line distance &times; 1.25 road factor. For ballpark appointment planning only &mdash; not a routed ETA. Winter assumes slower average speeds; a single closed pass can change everything.</p>
+  </div>
+  <div id="map"></div>
+  <div id="tables">
+    <div class="panel gb">
+      <h2>Greybull, WY <span class="count" id="gbCount"></span></h2>
+      <table id="gbTable">
+        <thead><tr><th data-k="name">Town <span class="arr"></span></th><th data-k="min">Drive Time <span class="arr"></span></th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <div class="panel bl">
+      <h2>Billings, MT <span class="count" id="blCount"></span></h2>
+      <table id="blTable">
+        <thead><tr><th data-k="name">Town <span class="arr"></span></th><th data-k="min">Drive Time <span class="arr"></span></th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+  integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+<script>
+// Offices
+const OFFICES = [
+  {name:"Greybull, WY (Office)", lat:44.4889, lon:-108.0568, side:"gb"},
+  {name:"Billings, MT (Office)", lat:45.7833, lon:-108.5007, side:"bl"}
+];
+
+// Towns: side gb = near Greybull (WY list), bl = near Billings (MT list)
+// time = label from spreadsheet; min = minutes for sorting
+const TOWNS = [
+  // ---- Greybull / Wyoming side ----
+  // region: "cpl" = Cody / Powell / Lovell area, "tw" = Thermopolis / Worland area
+  {name:"Basin, WY",       time:"10m",   min:10,  lat:44.3797, lon:-108.0393, side:"gb", region:"tw"},
+  {name:"Manderson, WY",   time:"20m",   min:20,  lat:44.2683, lon:-107.9640, side:"gb", region:"tw"},
+  {name:"Otto, WY",        time:"25m",   min:25,  lat:44.3886, lon:-108.2237, side:"gb", region:"tw"},
+  {name:"Burlington, WY",  time:"30m",   min:30,  lat:44.4505, lon:-108.4348, side:"gb", region:"tw"},
+  {name:"Lovell, WY",      time:"40m",   min:40,  lat:44.8377, lon:-108.3893, side:"gb", region:"cpl"},
+  {name:"Byron, WY",       time:"45m",   min:45,  lat:44.8044, lon:-108.5043, side:"gb", region:"cpl"},
+  {name:"Cowley, WY",      time:"50m",   min:50,  lat:44.8830, lon:-108.4665, side:"gb", region:"cpl"},
+  {name:"Emblem, WY",      time:"20m",   min:20,  lat:44.5025, lon:-108.3954, side:"gb", region:"tw"},
+  {name:"Deaver, WY",      time:"55m",   min:55,  lat:44.8908, lon:-108.5915, side:"gb", region:"cpl"},
+  {name:"Frannie, WY",     time:"1h",    min:60,  lat:44.9744, lon:-108.6151, side:"gb", region:"cpl"},
+  {name:"Powell, WY",      time:"1h",    min:60,  lat:44.7544, lon:-108.7573, side:"gb", region:"cpl"},
+  {name:"Meeteetse, WY",   time:"1h10m", min:70,  lat:44.1558, lon:-108.8693, side:"gb", region:"cpl"},
+  {name:"Ralston, WY",     time:"1h5m",  min:65,  lat:44.7080, lon:-108.8326, side:"gb", region:"cpl"},
+  {name:"Shell, WY",       time:"15m",   min:15,  lat:44.5408, lon:-107.7674, side:"gb", region:"tw"},
+  {name:"Cody, WY",        time:"1h",    min:60,  lat:44.5263, lon:-109.0565, side:"gb", region:"cpl"},
+  {name:"Ten Sleep, WY",   time:"1h30m", min:90,  lat:44.0383, lon:-107.4490, side:"gb", region:"tw"},
+  {name:"Thermopolis, WY", time:"55m",   min:55,  lat:43.6463, lon:-108.2120, side:"gb", region:"tw"},
+  {name:"Shoshoni, WY",    time:"1h50m", min:110, lat:43.2358, lon:-108.1118, side:"gb", region:"tw"},
+  {name:"Worland, WY",     time:"35m",   min:35,  lat:44.0169, lon:-107.9554, side:"gb", region:"tw"},
+  // ---- Billings / Montana side ----
+  {name:"Laurel",     time:"20m",   min:20,  lat:45.6680, lon:-108.7710, side:"bl"},
+  {name:"Lockwood",   time:"10m",   min:10,  lat:45.8230, lon:-108.4290, side:"bl"},
+  {name:"Shepherd",   time:"25m",   min:25,  lat:45.9460, lon:-108.3490, side:"bl"},
+  {name:"Huntley",    time:"20m",   min:20,  lat:45.8980, lon:-108.2960, side:"bl"},
+  {name:"Worden",     time:"30m",   min:30,  lat:45.9680, lon:-108.1590, side:"bl"},
+  {name:"Ballantine", time:"30m",   min:30,  lat:45.9510, lon:-108.1390, side:"bl"},
+  {name:"Pryor",      time:"50m",   min:50,  lat:45.4280, lon:-108.5360, side:"bl"},
+  {name:"Columbus",   time:"40m",   min:40,  lat:45.6360, lon:-109.2520, side:"bl"},
+  {name:"Joliet",     time:"45m",   min:45,  lat:45.4880, lon:-108.9760, side:"bl"},
+  {name:"Hardin",     time:"55m",   min:55,  lat:45.7330, lon:-107.6120, side:"bl"},
+  {name:"Roundup",    time:"1h",    min:60,  lat:46.4450, lon:-108.5410, side:"bl"},
+  {name:"Fromberg",   time:"1h",    min:60,  lat:45.3910, lon:-108.9080, side:"bl"},
+  {name:"Bridger",    time:"1h10m", min:70,  lat:45.2940, lon:-108.9130, side:"bl"},
+  {name:"Absarokee",  time:"1h10m", min:70,  lat:45.5210, lon:-109.4360, side:"bl"},
+  {name:"Red Lodge",  time:"1h15m", min:75,  lat:45.1860, lon:-109.2470, side:"bl"},
+  {name:"Big Timber", time:"1h20m", min:80,  lat:45.8350, lon:-109.9550, side:"bl"},
+  {name:"Park City",  time:"30m",   min:30,  lat:45.6300, lon:-108.9150, side:"bl"}
+];
+
+// ---------- Map ----------
+const map = L.map('map',{zoomControl:true});
+// Standard OSM tiles. These 403'd when the file was opened locally (file:// sends no
+// Referer, which OSM blocks); served from GitHub Pages the Referer is valid.
+L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{
+  maxZoom:19,
+  attribution:'&copy; OpenStreetMap contributors'
+}).addTo(map);
+
+const COLORS = {gb:getCSS('--gb'), bl:getCSS('--bl')};
+function getCSS(v){return getComputedStyle(document.documentElement).getPropertyValue(v).trim();}
+
+// Bigger pins on touch screens (iPad/phone) — 13px dots are hard to hit with a thumb.
+const TOUCH = window.matchMedia('(pointer: coarse)').matches;
+
+// state: 'normal' | 'highlight' | 'dim'
+function townIcon(side, state='normal'){
+  const halo = state==='highlight'
+    ? 'box-shadow:0 0 0 4px #f1c40f, 0 0 0 6px #fff, 0 0 6px 6px rgba(0,0,0,.25);'
+    : 'box-shadow:0 0 0 1px #555;';
+  const sz = state==='highlight' ? (TOUCH?26:19) : (TOUCH?20:13);
+  const op = state==='dim' ? 'opacity:.35;' : '';
+  return L.divIcon({className:'',html:
+    `<div style="width:${sz}px;height:${sz}px;border-radius:50%;background:${COLORS[side]};border:2px solid #fff;${halo}${op}"></div>`,
+    iconSize:[sz,sz], iconAnchor:[sz/2,sz/2]});
+}
+function officeIcon(side, state='normal'){
+  const halo = state==='highlight'
+    ? 'box-shadow:0 0 0 4px #f1c40f, 0 0 0 6px #fff, 0 0 6px 6px rgba(0,0,0,.25);'
+    : 'box-shadow:0 0 0 1px #333;';
+  const sz = state==='highlight' ? (TOUCH?32:24) : (TOUCH?26:18);
+  const op = state==='dim' ? 'opacity:.4;' : '';
+  return L.divIcon({className:'',html:
+    `<div style="width:${sz}px;height:${sz}px;border-radius:3px;background:${COLORS[side]};border:3px solid #fff;${halo}${op}"></div>`,
+    iconSize:[sz,sz], iconAnchor:[sz/2,sz/2]});
+}
+
+const markerByName = {};
+const markerMeta = {};   // name -> {side, type:'office'|'town'}
+const allPts=[];
+OFFICES.forEach(o=>{
+  const mk = L.marker([o.lat,o.lon],{icon:officeIcon(o.side),zIndexOffset:1000}).addTo(map)
+    .bindPopup(`<b>${o.name}</b>`);
+  markerByName[o.name] = mk;
+  markerMeta[o.name] = {side:o.side, type:'office'};
+  allPts.push([o.lat,o.lon]);
+});
+TOWNS.forEach(t=>{
+  const mk = L.marker([t.lat,t.lon],{icon:townIcon(t.side)}).addTo(map)
+    .bindPopup(`<b>${t.name}</b><br>${t.side==='gb'?'Greybull':'Billings'} office &middot; ${t.time}`);
+  markerByName[t.name] = mk;
+  markerMeta[t.name] = {side:t.side, type:'town', region:t.region};
+  allPts.push([t.lat,t.lon]);
+});
+
+// Show/hide WY town pins on the map to match the region filter (MT pins always shown)
+function applyRegionFilterToMap(){
+  const val = regionSel.value;
+  TOWNS.filter(t=>t.side==='gb').forEach(t=>{
+    const mk = markerByName[t.name];
+    const show = (val==='all' || t.region===val);
+    if(show){ if(!map.hasLayer(mk)) mk.addTo(map); }
+    else{ if(map.hasLayer(mk)) map.removeLayer(mk); }
+  });
+}
+
+function iconFor(name, state){
+  const m = markerMeta[name];
+  return m.type==='office' ? officeIcon(m.side, state) : townIcon(m.side, state);
+}
+
+// Frame both cities + all towns. Re-frame on rotate/resize so portrait <-> landscape
+// on an iPad always shows the full picture.
+const bounds = L.latLngBounds(allPts).pad(0.08);
+map.fitBounds(bounds);
+let resizeTimer=null;
+window.addEventListener('resize',()=>{
+  clearTimeout(resizeTimer);
+  resizeTimer=setTimeout(()=>{ map.invalidateSize(); map.fitBounds(bounds); },250);
+});
+
+// ---------- Tables ----------
+const state = {gb:{k:'min',asc:true}, bl:{k:'min',asc:true}};
+const regionSel = document.getElementById('regionSel');
+
+function render(side){
+  let rows = TOWNS.filter(t=>t.side===side);
+  if(side==='gb' && regionSel.value!=='all'){
+    rows = rows.filter(t=>t.region===regionSel.value);
+  }
+  const s = state[side];
+  rows.sort((a,b)=>{
+    let r = s.k==='name' ? a.name.localeCompare(b.name) : a.min-b.min;
+    return s.asc ? r : -r;
+  });
+  const tb = document.querySelector(`#${side}Table tbody`);
+  tb.innerHTML = rows.map(t=>`<tr><td class="townlink" data-name="${t.name}">${t.name}</td><td class="time">${t.time}</td></tr>`).join('');
+  document.getElementById(side+'Count').textContent = `(${rows.length} towns)`;
+  document.querySelectorAll(`#${side}Table th`).forEach(th=>{
+    const arr = th.querySelector('.arr');
+    arr.textContent = th.dataset.k===s.k ? (s.asc?'▲':'▼') : '';
+  });
+}
+['gb','bl'].forEach(side=>{
+  document.querySelectorAll(`#${side}Table th`).forEach(th=>{
+    th.addEventListener('click',()=>{
+      const k=th.dataset.k, s=state[side];
+      if(s.k===k){s.asc=!s.asc;}else{s.k=k;s.asc=true;}
+      render(side);
+    });
+  });
+  render(side);
+});
+
+regionSel.addEventListener('change',()=>{
+  render('gb');
+  applyRegionFilterToMap();
+  populateSelects(true);
+  calc();
+});
+applyRegionFilterToMap();
+
+// ---------- Click town in table -> fly map to it ----------
+document.querySelectorAll('#tables').forEach(c=>{
+  c.addEventListener('click', e=>{
+    const cell = e.target.closest('.townlink');
+    if(!cell) return;
+    const mk = markerByName[cell.dataset.name];
+    if(!mk) return;
+    clearHighlight();
+    map.flyTo(mk.getLatLng(), 11, {duration:1.1});
+    mk.openPopup();
+  });
+});
+
+// ---------- Distance calculator ----------
+// Speed assumptions (mph) as [low, high] average speeds -> produce a time RANGE.
+// Lower speed = longer time (range high end); higher speed = shorter time (range low end).
+const SPEEDS = {
+  summer: {slow:55, fast:65},
+  winter: {slow:40, fast:50}
+};
+const ROAD_FACTOR = 1.25;   // straight-line -> approx road distance
+
+// All selectable places = offices + towns (WY side narrowed by the region filter), sorted A-Z
+let PLACES = [];
+function buildPlaces(){
+  const val = regionSel.value;
+  const towns = TOWNS.filter(t => t.side!=='gb' || val==='all' || t.region===val);
+  PLACES = [...OFFICES, ...towns]
+    .map(p=>({name:p.name, lat:p.lat, lon:p.lon}))
+    .sort((a,b)=>a.name.localeCompare(b.name));
+}
+
+function haversineMiles(a, b){
+  const R=3958.8, toR=x=>x*Math.PI/180;
+  const dLat=toR(b.lat-a.lat), dLon=toR(b.lon-a.lon);
+  const s=Math.sin(dLat/2)**2 + Math.cos(toR(a.lat))*Math.cos(toR(b.lat))*Math.sin(dLon/2)**2;
+  return R*2*Math.asin(Math.sqrt(s));
+}
+function fmtMin(m){
+  m=Math.round(m);
+  if(m<60) return m+" min";
+  const h=Math.floor(m/60), r=m%60;
+  return r ? `${h}h ${r}m` : `${h}h`;
+}
+
+const fromSel=document.getElementById('fromSel');
+const toSel=document.getElementById('toSel');
+const winterChk=document.getElementById('winterChk');
+const rangeOut=document.getElementById('rangeOut');
+const milesOut=document.getElementById('milesOut');
+const resultBox=document.getElementById('result');
+
+function populateSelects(preserve){
+  const prevFrom = preserve ? PLACES[+fromSel.value]?.name : null;
+  const prevTo   = preserve ? PLACES[+toSel.value]?.name   : null;
+  buildPlaces();
+  fromSel.innerHTML = '';
+  toSel.innerHTML = '';
+  PLACES.forEach((p,i)=>{
+    fromSel.add(new Option(p.name,i));
+    toSel.add(new Option(p.name,i));
+  });
+  // keep the previous selection if it still exists in the filtered list, else fall back to offices
+  const fromIdx = prevFrom!=null ? PLACES.findIndex(p=>p.name===prevFrom) : -1;
+  const toIdx   = prevTo!=null   ? PLACES.findIndex(p=>p.name===prevTo)   : -1;
+  fromSel.value = fromIdx>=0 ? fromIdx : PLACES.findIndex(p=>/Greybull/.test(p.name));
+  toSel.value   = toIdx>=0   ? toIdx   : PLACES.findIndex(p=>/Billings/.test(p.name));
+}
+populateSelects(false);
+
+let tripLine = null;
+function highlightPair(aName, bName){
+  // reset all to normal/dim
+  Object.keys(markerByName).forEach(name=>{
+    const sel = (name===aName || name===bName);
+    markerByName[name].setIcon(iconFor(name, sel ? 'highlight' : 'dim'));
+    markerByName[name].setZIndexOffset(sel ? 2000 : 0);
+  });
+  if(tripLine){ map.removeLayer(tripLine); tripLine=null; }
+  const a=markerByName[aName], b=markerByName[bName];
+  if(a && b){
+    tripLine = L.polyline([a.getLatLng(), b.getLatLng()],
+      {color:'#f1c40f', weight:4, opacity:.9, dashArray:'8,6'}).addTo(map);
+  }
+}
+function clearHighlight(){
+  Object.keys(markerByName).forEach(name=>{
+    markerByName[name].setIcon(iconFor(name,'normal'));
+    markerByName[name].setZIndexOffset(markerMeta[name].type==='office'?1000:0);
+  });
+  if(tripLine){ map.removeLayer(tripLine); tripLine=null; }
+}
+
+function calc(){
+  const a=PLACES[+fromSel.value], b=PLACES[+toSel.value];
+  if(!a||!b) return;
+  if(a.name===b.name){ rangeOut.textContent="0 min"; milesOut.textContent="(same place)"; clearHighlight(); return; }
+  const roadMiles = haversineMiles(a,b)*ROAD_FACTOR;
+  const sp = winterChk.checked ? SPEEDS.winter : SPEEDS.summer;
+  const tHigh = roadMiles/sp.slow*60;   // slow speed -> longer time
+  const tLow  = roadMiles/sp.fast*60;   // fast speed -> shorter time
+  rangeOut.textContent = `${fmtMin(tLow)} – ${fmtMin(tHigh)}`;
+  milesOut.textContent = `≈ ${Math.round(roadMiles)} mi by road`;
+  resultBox.classList.toggle('winter', winterChk.checked);
+  highlightPair(a.name, b.name);
+}
+fromSel.addEventListener('change',calc);
+toSel.addEventListener('change',calc);
+winterChk.addEventListener('change',calc);
+document.getElementById('swapBtn').addEventListener('click',()=>{
+  const t=fromSel.value; fromSel.value=toSel.value; toSel.value=t; calc();
+});
+calc();
+</script>
+</body>
+</html>
